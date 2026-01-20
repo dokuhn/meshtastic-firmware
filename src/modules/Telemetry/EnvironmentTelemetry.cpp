@@ -20,6 +20,9 @@
 #include "sleep.h"
 #include "target_specific.h"
 #include <OLEDDisplay.h>
+#include "Sensor/DS18B20Sensor.h"
+
+DS18B20Sensor ds18b20Sensor;
 
 #if !MESHTASTIC_EXCLUDE_ENVIRONMENTAL_SENSOR_EXTERNAL
 
@@ -278,6 +281,10 @@ int32_t EnvironmentTelemetryModule::runOnce()
 
         if (moduleConfig.telemetry.environment_measurement_enabled || ENVIRONMENTAL_TELEMETRY_MODULE_ENABLE) {
             LOG_INFO("Environment Telemetry: init");
+
+            if (ds18b20Sensor.hasSensor()) {
+                result = ds18b20Sensor.runOnce();
+            }
 
             // check if we have at least one sensor
             if (!sensors.empty()) {
@@ -562,6 +569,12 @@ bool EnvironmentTelemetryModule::getEnvironmentTelemetry(meshtastic_Telemetry *m
     valid = valid && rak9154Sensor.getMetrics(m);
     hasSensor = true;
 #endif
+
+    if (ds18b20Sensor.hasSensor()) {
+        valid = valid && ds18b20Sensor.getMetrics(m);
+        hasSensor = true;
+    }
+
     return valid && hasSensor;
 }
 
