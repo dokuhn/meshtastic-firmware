@@ -945,6 +945,14 @@ void NodeDB::installRoleDefaults(meshtastic_Config_DeviceConfig_Role role)
         moduleConfig.telemetry.device_update_interval = default_telemetry_broadcast_interval_secs;
         moduleConfig.telemetry.environment_measurement_enabled = true;
         moduleConfig.telemetry.environment_update_interval = 300;
+    } else if (role == meshtastic_Config_DeviceConfig_Role_SENSOR_LOW_POWER) {
+        owner.has_is_unmessagable = true;
+        owner.is_unmessagable = true;
+        config.device.rebroadcast_mode = meshtastic_Config_DeviceConfig_RebroadcastMode_NONE;
+        moduleConfig.telemetry.device_update_interval = default_telemetry_broadcast_interval_secs;
+        moduleConfig.telemetry.environment_measurement_enabled = true;
+        moduleConfig.telemetry.environment_update_interval = 300;
+        config.power.is_power_saving = true;
     } else if (role == meshtastic_Config_DeviceConfig_Role_LOST_AND_FOUND) {
         config.position.position_broadcast_smart_enabled = false;
         config.position.position_broadcast_secs = 300; // Every 5 minutes

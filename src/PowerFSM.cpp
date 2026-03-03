@@ -373,7 +373,8 @@ void PowerFSM_setup()
 #if HAS_WIFI && !defined(MESHTASTIC_EXCLUDE_WIFI)
     bool isTrackerOrSensor = config.device.role == meshtastic_Config_DeviceConfig_Role_TRACKER ||
                              config.device.role == meshtastic_Config_DeviceConfig_Role_TAK_TRACKER ||
-                             config.device.role == meshtastic_Config_DeviceConfig_Role_SENSOR;
+                             config.device.role == meshtastic_Config_DeviceConfig_Role_SENSOR ||
+                             config.device.role == meshtastic_Config_DeviceConfig_Role_SENSOR_LOW_POWER;
 
     if ((isRouter || config.power.is_power_saving) && !isWifiAvailable() && !isTrackerOrSensor) {
         powerFSM.add_timed_transition(&stateNB, &stateLS,

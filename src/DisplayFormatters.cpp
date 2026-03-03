@@ -67,6 +67,9 @@ const char *DisplayFormatters::getDeviceRole(meshtastic_Config_DeviceConfig_Role
     case meshtastic_Config_DeviceConfig_Role_SENSOR:
         return "Sensor";
         break;
+    case meshtastic_Config_DeviceConfig_Role_SENSOR_LOW_POWER:
+        return "Sensor LowPwr";
+        break;
     case meshtastic_Config_DeviceConfig_Role_TAK:
         return "TAK";
         break;

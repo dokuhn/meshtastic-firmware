@@ -321,7 +321,8 @@ void SerialModule::sendTelemetry(meshtastic_Telemetry m)
         pb_encode_to_bytes(p->decoded.payload.bytes, sizeof(p->decoded.payload.bytes), &meshtastic_Telemetry_msg, &m);
     p->to = NODENUM_BROADCAST;
     p->decoded.want_response = false;
-    if (config.device.role == meshtastic_Config_DeviceConfig_Role_SENSOR) {
+    if (IS_ONE_OF(config.device.role, meshtastic_Config_DeviceConfig_Role_SENSOR,
+                  meshtastic_Config_DeviceConfig_Role_SENSOR_LOW_POWER)) {
         p->want_ack = true;
         p->priority = meshtastic_MeshPacket_Priority_HIGH;
     } else {

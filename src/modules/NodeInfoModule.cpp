@@ -95,7 +95,8 @@ void NodeInfoModule::sendOurNodeInfo(NodeNum dest, bool wantReplies, uint8_t cha
     if (p) { // Check whether we didn't ignore it
         p->to = dest;
         bool requestWantResponse = (config.device.role != meshtastic_Config_DeviceConfig_Role_TRACKER &&
-                                    config.device.role != meshtastic_Config_DeviceConfig_Role_SENSOR) &&
+                                    config.device.role != meshtastic_Config_DeviceConfig_Role_SENSOR &&
+                                    config.device.role != meshtastic_Config_DeviceConfig_Role_SENSOR_LOW_POWER) &&
                                    wantReplies;
 
         p->decoded.want_response = requestWantResponse;

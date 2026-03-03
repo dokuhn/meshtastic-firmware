@@ -96,7 +96,8 @@ int32_t AirQualityTelemetryModule::runOnce()
              !Throttle::isWithinTimespanMs(lastSentToMesh, Default::getConfiguredOrDefaultMsScaled(
                                                                moduleConfig.telemetry.air_quality_interval,
                                                                default_telemetry_broadcast_interval_secs, numOnlineNodes))) &&
-            airTime->isTxAllowedChannelUtil(config.device.role != meshtastic_Config_DeviceConfig_Role_SENSOR) &&
+            airTime->isTxAllowedChannelUtil(config.device.role != meshtastic_Config_DeviceConfig_Role_SENSOR &&
+                                            config.device.role != meshtastic_Config_DeviceConfig_Role_SENSOR_LOW_POWER) &&
             airTime->isTxAllowedAirUtil()) {
             sendTelemetry();
             lastSentToMesh = millis();
@@ -301,7 +302,8 @@ bool AirQualityTelemetryModule::sendTelemetry(NodeNum dest, bool phoneOnly)
         meshtastic_MeshPacket *p = allocDataProtobuf(m);
         p->to = dest;
         p->decoded.want_response = false;
-        if (config.device.role == meshtastic_Config_DeviceConfig_Role_SENSOR)
+        if (IS_ONE_OF(config.device.role, meshtastic_Config_DeviceConfig_Role_SENSOR,
+                      meshtastic_Config_DeviceConfig_Role_SENSOR_LOW_POWER))
             p->priority = meshtastic_MeshPacket_Priority_RELIABLE;
         else
             p->priority = meshtastic_MeshPacket_Priority_BACKGROUND;
@@ -318,7 +320,8 @@ bool AirQualityTelemetryModule::sendTelemetry(NodeNum dest, bool phoneOnly)
             LOG_INFO("Sending packet to mesh");
             service->sendToMesh(p, RX_SRC_LOCAL, true);
 
-            if (config.device.role == meshtastic_Config_DeviceConfig_Role_SENSOR && config.power.is_power_saving) {
+            if (IS_ONE_OF(config.device.role, meshtastic_Config_DeviceConfig_Role_SENSOR,
+                          meshtastic_Config_DeviceConfig_Role_SENSOR_LOW_POWER) && config.power.is_power_saving) {
                 meshtastic_ClientNotification *notification = clientNotificationPool.allocZeroed();
                 notification->level = meshtastic_LogRecord_Level_INFO;
                 notification->time = getValidTime(RTCQualityFromNet);

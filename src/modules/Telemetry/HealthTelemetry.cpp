@@ -73,7 +73,8 @@ int32_t HealthTelemetryModule::runOnce()
              !Throttle::isWithinTimespanMs(lastSentToMesh, Default::getConfiguredOrDefaultMsScaled(
                                                                moduleConfig.telemetry.health_update_interval,
                                                                default_telemetry_broadcast_interval_secs, numOnlineNodes))) &&
-            airTime->isTxAllowedChannelUtil(config.device.role != meshtastic_Config_DeviceConfig_Role_SENSOR) &&
+            airTime->isTxAllowedChannelUtil(config.device.role != meshtastic_Config_DeviceConfig_Role_SENSOR &&
+                                            config.device.role != meshtastic_Config_DeviceConfig_Role_SENSOR_LOW_POWER) &&
             airTime->isTxAllowedAirUtil()) {
             sendTelemetry();
             lastSentToMesh = millis();
@@ -228,7 +229,8 @@ bool HealthTelemetryModule::sendTelemetry(NodeNum dest, bool phoneOnly)
         meshtastic_MeshPacket *p = allocDataProtobuf(m);
         p->to = dest;
         p->decoded.want_response = false;
-        if (config.device.role == meshtastic_Config_DeviceConfig_Role_SENSOR)
+        if (IS_ONE_OF(config.device.role, meshtastic_Config_DeviceConfig_Role_SENSOR,
+                      meshtastic_Config_DeviceConfig_Role_SENSOR_LOW_POWER))
             p->priority = meshtastic_MeshPacket_Priority_RELIABLE;
         else
             p->priority = meshtastic_MeshPacket_Priority_BACKGROUND;
@@ -244,7 +246,8 @@ bool HealthTelemetryModule::sendTelemetry(NodeNum dest, bool phoneOnly)
             LOG_INFO("Send packet to mesh");
             service->sendToMesh(p, RX_SRC_LOCAL, true);
 
-            if (config.device.role == meshtastic_Config_DeviceConfig_Role_SENSOR && config.power.is_power_saving) {
+            if (IS_ONE_OF(config.device.role, meshtastic_Config_DeviceConfig_Role_SENSOR,
+                          meshtastic_Config_DeviceConfig_Role_SENSOR_LOW_POWER) && config.power.is_power_saving) {
                 LOG_DEBUG("Start next execution in 5s, then sleep");
                 sleepOnNextExecution = true;
                 setIntervalFromNow(5000);
