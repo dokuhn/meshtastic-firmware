@@ -595,6 +595,9 @@ void NodeDB::installDefaultConfig(bool preserveKey = false)
 #else
     config.lora.modem_preset = meshtastic_Config_LoRaConfig_ModemPreset_LONG_FAST;
 #endif
+#ifdef USERPREFS_LORACONFIG_TX_POWER
+    config.lora.tx_power = USERPREFS_LORACONFIG_TX_POWER;
+#endif
     config.lora.hop_limit = HOP_RELIABLE;
 #ifdef USERPREFS_CONFIG_LORA_IGNORE_MQTT
     config.lora.ignore_mqtt = USERPREFS_CONFIG_LORA_IGNORE_MQTT;
