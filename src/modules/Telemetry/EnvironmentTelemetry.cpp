@@ -303,7 +303,17 @@ int32_t EnvironmentTelemetryModule::runOnce()
         }
         // it's possible to have this module enabled, only for displaying values on the screen.
         // therefore, we should only enable the sensor loop if measurement is also enabled
-        return result == UINT32_MAX ? disable() : setStartDelay();
+        // For SENSOR_LOW_POWER role, keep the module enabled even without sensors to ensure sleep cycle works
+        if (result == UINT32_MAX) {
+            if (config.device.role == meshtastic_Config_DeviceConfig_Role_SENSOR_LOW_POWER) {
+                LOG_INFO("SENSOR_LOW_POWER: No sensors found, but keeping module enabled for sleep cycle");
+                result = Default::getConfiguredOrDefaultMs(moduleConfig.telemetry.environment_update_interval,
+                                                           default_telemetry_broadcast_interval_secs);
+            } else {
+                return disable();
+            }
+        }
+        return setStartDelay();
     } else {
         // if we somehow got to a second run of this module with measurement disabled, then just wait forever
         if (!moduleConfig.telemetry.environment_measurement_enabled && !ENVIRONMENTAL_TELEMETRY_MODULE_ENABLE) {
@@ -317,6 +327,10 @@ int32_t EnvironmentTelemetryModule::runOnce()
             }
         }
 
+        // For SENSOR_LOW_POWER without sensors: trigger sleep cycle directly
+        bool noSensorsAvailable = sensors.empty();
+        bool isSensorLowPowerRole = (config.device.role == meshtastic_Config_DeviceConfig_Role_SENSOR_LOW_POWER);
+
         if (((lastSentToMesh == 0) ||
              !Throttle::isWithinTimespanMs(lastSentToMesh, Default::getConfiguredOrDefaultMsScaled(
                                                                moduleConfig.telemetry.environment_update_interval,
@@ -324,7 +338,14 @@ int32_t EnvironmentTelemetryModule::runOnce()
             airTime->isTxAllowedChannelUtil(config.device.role != meshtastic_Config_DeviceConfig_Role_SENSOR &&
                                             config.device.role != meshtastic_Config_DeviceConfig_Role_SENSOR_LOW_POWER) &&
             airTime->isTxAllowedAirUtil()) {
-            sendTelemetry();
+            if (noSensorsAvailable && isSensorLowPowerRole && config.power.is_power_saving) {
+                // No sensors but SENSOR_LOW_POWER role: go to sleep without sending telemetry
+                LOG_INFO("SENSOR_LOW_POWER: No sensors, entering sleep cycle");
+                sleepOnNextExecution = true;
+                setIntervalFromNow(FIVE_SECONDS_MS);
+            } else {
+                sendTelemetry();
+            }
             lastSentToMesh = millis();
         } else if (((lastSentToPhone == 0) || !Throttle::isWithinTimespanMs(lastSentToPhone, sendToPhoneIntervalMs)) &&
                    (service->isToPhoneQueueEmpty())) {

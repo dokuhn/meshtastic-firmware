@@ -19,7 +19,7 @@
   "USERPREFS_CONFIG_GPS_MODE": "meshtastic_Config_PositionConfig_GpsMode_NOT_PRESENT",
   // "USERPREFS_CONFIG_LORA_IGNORE_MQTT": "true",
   "USERPREFS_CONFIG_LORA_REGION": "meshtastic_Config_LoRaConfig_RegionCode_EU_868",
-  "USERPREFS_CONFIG_OWNER_LONG_NAME": "RP2040 Sensor LP",
+  "USERPREFS_CONFIG_OWNER_LONG_NAME": "RP2040 MiniPill LoRa LP",
   "USERPREFS_CONFIG_OWNER_SHORT_NAME": "RSLP",
   "USERPREFS_CONFIG_DEVICE_ROLE": "meshtastic_Config_DeviceConfig_Role_SENSOR_LOW_POWER", // Defaults to CLIENT. ROUTER*, and LOST AND FOUND roles are restricted.
   // "USERPREFS_EVENT_MODE": "1",
