@@ -156,7 +156,7 @@ bool NextHopRouter::perhapsRebroadcast(const meshtastic_MeshPacket *p)
                     return true;
                 }
             } else {
-                LOG_DEBUG("No rebroadcast: Role = CLIENT_MUTE or Rebroadcast Mode = NONE");
+                LOG_DEBUG("No rebroadcast: Role = CLIENT_MUTE/SENSOR_LOW_POWER or Rebroadcast Mode = NONE");
             }
         } else {
             LOG_DEBUG("Ignore 0 id broadcast");

@@ -223,11 +223,25 @@ void doDeepSleep(uint32_t msecToWake, bool skipPreflight = false, bool skipSaveN
         nimbleBluetooth->deinit();
 #endif
 
+
+#ifdef ARCH_RP2040
+    // If the device's role is set to SENSOR_LOW_POWER and ARCH_RP2040, only the radio interface
+    // goes into deep sleep mode; the other observers, like GPS, etc., are not currently needed 
+    // and would cause a deadlock. 
+    if (config.device.role == meshtastic_Config_DeviceConfig_Role_SENSOR_LOW_POWER) {
+        extern RadioInterface *rIf;
+        if (rIf) {
+            LOG_DEBUG("doDeepSleep: SENSOR_LOW_POWER - calling rIf->sleep() only");
+            rIf->sleep();
+        }
+    } else {
+        notifyDeepSleep.notifyObservers(NULL);
+    }
+#else
 #ifdef ARCH_ESP32
     if (!shouldLoraWake(msecToWake))
         notifyDeepSleep.notifyObservers(NULL);
-#else
-    notifyDeepSleep.notifyObservers(NULL);
+#endif
 #endif
 
     powerMon->setState(meshtastic_PowerMon_State_CPU_DeepSleep);
@@ -362,6 +376,7 @@ void doDeepSleep(uint32_t msecToWake, bool skipPreflight = false, bool skipSaveN
     pinMode(I2C_SCL, ANALOG);
 #endif
 
+    LOG_INFO("doDeepSleep: About to call cpuDeepSleep(%u ms)", msecToWake);
     console->flush();
     cpuDeepSleep(msecToWake);
 }

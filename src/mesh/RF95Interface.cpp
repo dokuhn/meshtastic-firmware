@@ -328,14 +328,20 @@ bool RF95Interface::isActivelyReceiving()
 
 bool RF95Interface::sleep()
 {
+    LOG_INFO("RF95Interface::sleep() - begin");
     // put chipset into sleep mode
+    LOG_INFO("RF95Interface::sleep() - setStandby");
     setStandby(); // First cancel any active receiving/sending
+    LOG_INFO("RF95Interface::sleep() - after setStandby, before lora->sleep()");
     lora->sleep();
+    LOG_INFO("RF95Interface::sleep() - after lora->sleep()");
 
 #ifdef RF95_FAN_EN
+    LOG_INFO("RF95Interface::sleep() - disabling FAN");
     digitalWrite(RF95_FAN_EN, 0);
 #endif
 
+    LOG_INFO("RF95Interface::sleep() - end");
     return true;
 }
 #endif

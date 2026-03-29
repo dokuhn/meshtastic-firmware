@@ -24,3 +24,5 @@
 #define LORA_RESET RADIOLIB_NC
 
 #define ledOff(pin) pinMode(pin, INPUT)
+
+#define PIN_WIRE_DS18B20 21 // GPIO21

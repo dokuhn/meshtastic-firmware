@@ -70,7 +70,14 @@ typedef enum _meshtastic_Config_DeviceConfig_Role {
  Technical Details: Used for stronger attic/roof nodes to distribute messages more widely
     from weaker, indoor, or less-well-positioned nodes. Recommended for users with multiple nodes
     where one CLIENT_BASE acts as a more powerful base station, such as an attic/roof node. */
-    meshtastic_Config_DeviceConfig_Role_CLIENT_BASE = 12
+    meshtastic_Config_DeviceConfig_Role_CLIENT_BASE = 12,
+    /* Description: Ultra low-power sensor node that only transmits telemetry data. No receive capability.
+ Technical Details: Designed for battery-powered sensor nodes (e.g. RP2040-MiniPill-LoRa with RFM95).
+   The node will wake up, read sensors, transmit telemetry, then enter RP2040 sleep mode.
+   Radio is TX-only - no receive or rebroadcast. Uses RP2040 sleep mode (DORMANT_SOURCE_ROSC)
+   which preserves RAM content. NodeDB is saved to flash before sleep to persist packet counters
+   across reboots since the current RP2040 sleep implementation triggers a reboot on wake. */
+    meshtastic_Config_DeviceConfig_Role_SENSOR_LOW_POWER = 13
 } meshtastic_Config_DeviceConfig_Role;
 
 /* Defines the device's behavior for how messages are rebroadcast */
@@ -641,8 +648,8 @@ extern "C" {
 
 /* Helper constants for enums */
 #define _meshtastic_Config_DeviceConfig_Role_MIN meshtastic_Config_DeviceConfig_Role_CLIENT
-#define _meshtastic_Config_DeviceConfig_Role_MAX meshtastic_Config_DeviceConfig_Role_CLIENT_BASE
-#define _meshtastic_Config_DeviceConfig_Role_ARRAYSIZE ((meshtastic_Config_DeviceConfig_Role)(meshtastic_Config_DeviceConfig_Role_CLIENT_BASE+1))
+#define _meshtastic_Config_DeviceConfig_Role_MAX meshtastic_Config_DeviceConfig_Role_SENSOR_LOW_POWER
+#define _meshtastic_Config_DeviceConfig_Role_ARRAYSIZE ((meshtastic_Config_DeviceConfig_Role)(meshtastic_Config_DeviceConfig_Role_SENSOR_LOW_POWER+1))
 
 #define _meshtastic_Config_DeviceConfig_RebroadcastMode_MIN meshtastic_Config_DeviceConfig_RebroadcastMode_ALL
 #define _meshtastic_Config_DeviceConfig_RebroadcastMode_MAX meshtastic_Config_DeviceConfig_RebroadcastMode_CORE_PORTNUMS_ONLY

@@ -595,6 +595,9 @@ void NodeDB::installDefaultConfig(bool preserveKey = false)
 #else
     config.lora.modem_preset = meshtastic_Config_LoRaConfig_ModemPreset_LONG_FAST;
 #endif
+#ifdef USERPREFS_LORACONFIG_TX_POWER
+    config.lora.tx_power = USERPREFS_LORACONFIG_TX_POWER;
+#endif
     config.lora.hop_limit = HOP_RELIABLE;
 #ifdef USERPREFS_CONFIG_LORA_IGNORE_MQTT
     config.lora.ignore_mqtt = USERPREFS_CONFIG_LORA_IGNORE_MQTT;
@@ -945,6 +948,14 @@ void NodeDB::installRoleDefaults(meshtastic_Config_DeviceConfig_Role role)
         moduleConfig.telemetry.device_update_interval = default_telemetry_broadcast_interval_secs;
         moduleConfig.telemetry.environment_measurement_enabled = true;
         moduleConfig.telemetry.environment_update_interval = 300;
+    } else if (role == meshtastic_Config_DeviceConfig_Role_SENSOR_LOW_POWER) {
+        owner.has_is_unmessagable = true;
+        owner.is_unmessagable = true;
+        config.device.rebroadcast_mode = meshtastic_Config_DeviceConfig_RebroadcastMode_NONE;
+        moduleConfig.telemetry.device_update_interval = default_telemetry_broadcast_interval_secs;
+        moduleConfig.telemetry.environment_measurement_enabled = true;
+        moduleConfig.telemetry.environment_update_interval = 300;
+        config.power.is_power_saving = true;
     } else if (role == meshtastic_Config_DeviceConfig_Role_LOST_AND_FOUND) {
         config.position.position_broadcast_smart_enabled = false;
         config.position.position_broadcast_secs = 300; // Every 5 minutes
@@ -995,7 +1006,11 @@ void NodeDB::initModuleConfigIntervals()
 #else
     moduleConfig.telemetry.device_update_interval = MAX_INTERVAL;
 #endif
+#ifdef USERPREFS_CONFIG_ENV_TELEM_UPDATE_INTERVAL
+    moduleConfig.telemetry.environment_update_interval = USERPREFS_CONFIG_ENV_TELEM_UPDATE_INTERVAL;
+#else
     moduleConfig.telemetry.environment_update_interval = 0;
+#endif
     moduleConfig.telemetry.air_quality_interval = 0;
     moduleConfig.telemetry.power_update_interval = 0;
     moduleConfig.telemetry.health_update_interval = 0;

@@ -41,14 +41,22 @@ void cpuDeepSleep(uint32_t msecs)
     time_t seconds = (time_t)(msecs / 1000);
     datetime_t t_init, t_alarm;
 
+    LOG_DEBUG("RP2040 cpuDeepSleep: Entering sleep for %lu ms (%lu seconds)", msecs, (unsigned long)seconds);
+
     awake = false;
     // Start the RTC
     rtc_init();
     epoch_to_datetime(0, &t_init);
     rtc_set_datetime(&t_init);
     epoch_to_datetime(seconds, &t_alarm);
-    // debug_date(t_init);
-    // debug_date(t_alarm);
+
+    LOG_DEBUG("RP2040 cpuDeepSleep: RTC alarm set - year:%d mon:%d day:%d hour:%d min:%d sec:%d",
+             t_alarm.year, t_alarm.month, t_alarm.day, t_alarm.hour, t_alarm.min, t_alarm.sec);
+
+    // Flush serial output before sleep
+    Serial.flush();
+    delay(100);
+
     uart_default_tx_wait_blocking();
     sleep_run_from_dormant_source(DORMANT_SOURCE_ROSC);
     sleep_goto_sleep_until(&t_alarm, &sleep_callback);
