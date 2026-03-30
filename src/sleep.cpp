@@ -5,14 +5,15 @@
 #endif
 
 #include "Default.h"
-#include "Led.h"
 #include "MeshRadio.h"
 #include "MeshService.h"
 #include "NodeDB.h"
 #include "PowerMon.h"
+#include "TransmitHistory.h"
 #include "detect/LoRaRadioType.h"
 #include "error.h"
 #include "main.h"
+#include "modules/StatusLEDModule.h"
 #include "sleep.h"
 #include "target_specific.h"
 
@@ -54,6 +55,12 @@ Observable<void *> notifyDeepSleep;
 
 /// Called to tell observers we are rebooting ASAP.  Must return 0
 Observable<void *> notifyReboot;
+
+/// Called to tell the radio that we are going to sleep, so it should power down as much as possible.
+/// It's a workaround for the fact that on our target, the RP2040 MiniPill LoRa board, the other observers (like GPS, etc.) 
+// are not currently needed and would cause a deadlock if we tried to put them to sleep. 
+/// So instead we just tell the radio to go to sleep and it can handle that as best it can. 
+Observable<void *> notifyRadioDeepSleep;
 
 #ifdef ARCH_ESP32
 /// Called to tell observers that light sleep is about to begin
@@ -225,17 +232,10 @@ void doDeepSleep(uint32_t msecToWake, bool skipPreflight = false, bool skipSaveN
 
 
 #ifdef ARCH_RP2040
-    // If the device's role is set to SENSOR_LOW_POWER and ARCH_RP2040, only the radio interface
-    // goes into deep sleep mode; the other observers, like GPS, etc., are not currently needed 
-    // and would cause a deadlock. 
+    // If the device's role is set to SENSOR_LOW_POWER and ARCH_RP2040
+    // 
     if (config.device.role == meshtastic_Config_DeviceConfig_Role_SENSOR_LOW_POWER) {
-        extern RadioInterface *rIf;
-        if (rIf) {
-            LOG_DEBUG("doDeepSleep: SENSOR_LOW_POWER - calling rIf->sleep() only");
-            rIf->sleep();
-        }
-    } else {
-        notifyDeepSleep.notifyObservers(NULL);
+        notifyRadioDeepSleep.notifyObservers(NULL);
     }
 #else
 #ifdef ARCH_ESP32
@@ -252,10 +252,13 @@ void doDeepSleep(uint32_t msecToWake, bool skipPreflight = false, bool skipSaveN
         nodeDB->saveToDisk();
     }
 
+    // Persist broadcast transmit times so throttle survives reboot
+    if (transmitHistory)
+        transmitHistory->saveToDisk();
+
 #ifdef PIN_POWER_EN
     digitalWrite(PIN_POWER_EN, LOW);
     pinMode(PIN_POWER_EN, INPUT); // power off peripherals
-    // pinMode(PIN_POWER_EN1, INPUT_PULLDOWN);
 #endif
 
 #ifdef RAK_WISMESH_TAP_V2
@@ -283,8 +286,7 @@ void doDeepSleep(uint32_t msecToWake, bool skipPreflight = false, bool skipSaveN
     digitalWrite(PIN_WD_EN, LOW);
 #endif
 #endif
-    ledBlink.set(false);
-
+    statusLEDModule->setPowerLED(false);
 #ifdef RESET_OLED
     digitalWrite(RESET_OLED, 1); // put the display in reset before killing its power
 #endif
@@ -441,8 +443,13 @@ esp_sleep_wakeup_cause_t doLightSleep(uint64_t sleepMsec) // FIXME, use a more r
     gpio_num_t pin = (gpio_num_t)(config.device.button_gpio ? config.device.button_gpio : BUTTON_PIN);
     gpio_wakeup_enable(pin, GPIO_INTR_LOW_LEVEL);
 #endif
-#ifdef INPUTDRIVER_ENCODER_BTN
-    gpio_wakeup_enable((gpio_num_t)INPUTDRIVER_ENCODER_BTN, GPIO_INTR_LOW_LEVEL);
+#if defined(INPUTDRIVER_TWO_WAY_ROCKER_BTN) || defined(INPUTDRIVER_ENCODER_BTN)
+#if defined(INPUTDRIVER_TWO_WAY_ROCKER_BTN)
+#define INPUTDRIVER_WAKE_BTN_PIN INPUTDRIVER_TWO_WAY_ROCKER_BTN
+#else
+#define INPUTDRIVER_WAKE_BTN_PIN INPUTDRIVER_ENCODER_BTN
+#endif
+    gpio_wakeup_enable((gpio_num_t)INPUTDRIVER_WAKE_BTN_PIN, GPIO_INTR_LOW_LEVEL);
 #endif
 #if defined(WAKE_ON_TOUCH)
     gpio_wakeup_enable((gpio_num_t)SCREEN_TOUCH_INT, GPIO_INTR_LOW_LEVEL);
@@ -483,8 +490,9 @@ esp_sleep_wakeup_cause_t doLightSleep(uint64_t sleepMsec) // FIXME, use a more r
     // Disable wake-on-button interrupt. Re-attach normal button-interrupts
     gpio_wakeup_disable(pin);
 #endif
-#if defined(INPUTDRIVER_ENCODER_BTN)
-    gpio_wakeup_disable((gpio_num_t)INPUTDRIVER_ENCODER_BTN);
+#ifdef INPUTDRIVER_WAKE_BTN_PIN
+    gpio_wakeup_disable((gpio_num_t)INPUTDRIVER_WAKE_BTN_PIN);
+#undef INPUTDRIVER_WAKE_BTN_PIN
 #endif
 #if defined(WAKE_ON_TOUCH)
     gpio_wakeup_disable((gpio_num_t)SCREEN_TOUCH_INT);
@@ -551,7 +559,8 @@ void enableModemSleep()
 
 bool shouldLoraWake(uint32_t msecToWake)
 {
-    return msecToWake < portMAX_DELAY && (config.device.role == meshtastic_Config_DeviceConfig_Role_ROUTER);
+    return msecToWake < portMAX_DELAY && (config.device.role == meshtastic_Config_DeviceConfig_Role_ROUTER ||
+                                          config.device.role == meshtastic_Config_DeviceConfig_Role_ROUTER_LATE);
 }
 
 void enableLoraInterrupt()
@@ -572,10 +581,8 @@ void enableLoraInterrupt()
     gpio_pullup_en((gpio_num_t)LORA_CS);
 #endif
 
-#if defined(USE_GC1109_PA)
-    gpio_pullup_en((gpio_num_t)LORA_PA_POWER);
-    gpio_pullup_en((gpio_num_t)LORA_PA_EN);
-    gpio_pulldown_en((gpio_num_t)LORA_PA_TX_EN);
+#if HAS_LORA_FEM
+    loraFEMInterface.setRxModeEnableWhenMCUSleep();
 #endif
 
     LOG_INFO("setup LORA_DIO1 (GPIO%02d) with wakeup by gpio interrupt", LORA_DIO1);

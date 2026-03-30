@@ -23,6 +23,7 @@
 #endif
 
 #include "Default.h"
+#include "MeshRadio.h"
 #include "TypeConversions.h"
 
 #if !MESHTASTIC_EXCLUDE_MQTT
@@ -37,7 +38,7 @@
 #include "modules/PositionModule.h"
 #endif
 
-#if !defined(ARCH_STM32WL) && !MESHTASTIC_EXCLUDE_I2C
+#if !defined(ARCH_STM32WL) && !MESHTASTIC_EXCLUDE_I2C && !MESHTASTIC_EXCLUDE_ACCELEROMETER
 #include "motion/AccelerometerThread.h"
 #endif
 #if (defined(ARCH_ESP32) || defined(ARCH_NRF52) || defined(ARCH_RP2040)) && !defined(CONFIG_IDF_TARGET_ESP32S2) &&               \
@@ -235,22 +236,46 @@ bool AdminModule::handleReceivedProtobuf(const meshtastic_MeshPacket &mp, meshta
     }
     case meshtastic_AdminMessage_ota_request_tag: {
 #if defined(ARCH_ESP32)
+        LOG_INFO("OTA Requested");
+
         if (r->ota_request.ota_hash.size != 32) {
             suppressRebootBanner = true;
-            LOG_INFO("OTA Failed: Invalid `ota_hash` provided");
+            sendWarningAndLog("Cannot start OTA: Invalid `ota_hash` provided.");
             break;
         }
 
         meshtastic_OTAMode mode = r->ota_request.reboot_ota_mode;
+        const char *mode_name = (mode == METHOD_OTA_BLE ? "BLE" : "WiFi");
+
+        // Check that we have an OTA partition
+        const esp_partition_t *part = MeshtasticOTA::getAppPartition();
+        if (part == NULL) {
+            suppressRebootBanner = true;
+            sendWarningAndLog("Cannot start OTA: Cannot find OTA Loader partition.");
+            break;
+        }
+
+        static esp_app_desc_t app_desc;
+        if (!MeshtasticOTA::getAppDesc(part, &app_desc)) {
+            suppressRebootBanner = true;
+            sendWarningAndLog("Cannot start OTA: Device does have a valid OTA Loader.");
+            break;
+        }
+
+        if (!MeshtasticOTA::checkOTACapability(&app_desc, mode)) {
+            suppressRebootBanner = true;
+            sendWarningAndLog("OTA Loader does not support %s", mode_name);
+            break;
+        }
+
         if (MeshtasticOTA::trySwitchToOTA()) {
-            LOG_INFO("OTA Requested");
             suppressRebootBanner = true;
             if (screen)
                 screen->startFirmwareUpdateScreen();
             MeshtasticOTA::saveConfig(&config.network, mode, r->ota_request.ota_hash.bytes);
-            LOG_INFO("Rebooting to WiFi OTA");
+            sendWarningAndLog("Rebooting to %s OTA", mode_name);
         } else {
-            LOG_INFO("WIFI OTA Failed");
+            sendWarningAndLog("Unable to switch to the OTA partition.");
         }
 #endif
         int s = 1; // Reboot in 1 second, hard coded
@@ -367,7 +392,7 @@ bool AdminModule::handleReceivedProtobuf(const meshtastic_MeshPacket &mp, meshta
             node->has_device_metrics = false;
             node->has_position = false;
             node->user.public_key.size = 0;
-            node->user.public_key.bytes[0] = 0;
+            memset(node->user.public_key.bytes, 0, sizeof(node->user.public_key.bytes));
             saveChanges(SEGMENT_NODEDATABASE, false);
         }
         break;
@@ -612,18 +637,13 @@ void AdminModule::handleSetConfig(const meshtastic_Config &c)
     case meshtastic_Config_device_tag:
         LOG_INFO("Set config: Device");
         config.has_device = true;
-#if !defined(ARCH_PORTDUINO) && !defined(ARCH_STM32WL) && !MESHTASTIC_EXCLUDE_ENVIRONMENTAL_SENSOR
+#if !defined(ARCH_PORTDUINO) && !defined(ARCH_STM32WL) && !MESHTASTIC_EXCLUDE_ENVIRONMENTAL_SENSOR &&                            \
+    !MESHTASTIC_EXCLUDE_ACCELEROMETER
         if (config.device.double_tap_as_button_press == false && c.payload_variant.device.double_tap_as_button_press == true &&
             accelerometerThread->enabled == false) {
             config.device.double_tap_as_button_press = c.payload_variant.device.double_tap_as_button_press;
             accelerometerThread->enabled = true;
             accelerometerThread->start();
-        }
-#endif
-#ifdef LED_PIN
-        // Turn LED off if heartbeat by config
-        if (c.payload_variant.device.led_heartbeat_disabled) {
-            digitalWrite(LED_PIN, HIGH ^ LED_STATE_ON);
         }
 #endif
         if (config.device.button_gpio == c.payload_variant.device.button_gpio &&
@@ -634,9 +654,10 @@ void AdminModule::handleSetConfig(const meshtastic_Config &c)
         }
         config.device = c.payload_variant.device;
         if (config.device.rebroadcast_mode == meshtastic_Config_DeviceConfig_RebroadcastMode_NONE &&
-            config.device.role == meshtastic_Config_DeviceConfig_Role_ROUTER) {
+            (config.device.role == meshtastic_Config_DeviceConfig_Role_ROUTER ||
+             config.device.role == meshtastic_Config_DeviceConfig_Role_ROUTER_LATE)) {
             config.device.rebroadcast_mode = meshtastic_Config_DeviceConfig_RebroadcastMode_ALL;
-            const char *warning = "Rebroadcast mode can't be set to NONE for a router";
+            const char *warning = "Rebroadcast mode can't be set to NONE for a router role";
             LOG_WARN(warning);
             sendWarning(warning);
         }
@@ -719,7 +740,8 @@ void AdminModule::handleSetConfig(const meshtastic_Config &c)
                    c.payload_variant.display.displaymode == meshtastic_Config_DisplayConfig_DisplayMode_COLOR) {
             config.bluetooth.enabled = false;
         }
-#if !defined(ARCH_PORTDUINO) && !defined(ARCH_STM32WL) && !MESHTASTIC_EXCLUDE_ENVIRONMENTAL_SENSOR
+#if !defined(ARCH_PORTDUINO) && !defined(ARCH_STM32WL) && !MESHTASTIC_EXCLUDE_ENVIRONMENTAL_SENSOR &&                            \
+    !MESHTASTIC_EXCLUDE_ACCELEROMETER
         if (config.display.wake_on_tap_or_motion == false && c.payload_variant.display.wake_on_tap_or_motion == true &&
             accelerometerThread->enabled == false) {
             config.display.wake_on_tap_or_motion = c.payload_variant.display.wake_on_tap_or_motion;
@@ -738,20 +760,14 @@ void AdminModule::handleSetConfig(const meshtastic_Config &c)
         LOG_INFO("Set config: LoRa");
         config.has_lora = true;
 
-        if (validatedLora.coding_rate < 4 || validatedLora.coding_rate > 8) {
-            LOG_WARN("Invalid coding_rate %d, setting to 5", validatedLora.coding_rate);
-            validatedLora.coding_rate = 5;
+        if (validatedLora.coding_rate != clampCodingRate(validatedLora.coding_rate)) {
+            LOG_WARN("Invalid coding_rate %d, setting to %d", validatedLora.coding_rate, LORA_CR_DEFAULT);
+            validatedLora.coding_rate = LORA_CR_DEFAULT;
         }
 
-        if (validatedLora.spread_factor < 7 || validatedLora.spread_factor > 12) {
-            LOG_WARN("Invalid spread_factor %d, setting to 11", validatedLora.spread_factor);
-            validatedLora.spread_factor = 11;
-        }
-
-        if (validatedLora.bandwidth == 0) {
-            int originalBandwidth = validatedLora.bandwidth;
-            validatedLora.bandwidth = myRegion->wideLora ? 800 : 250;
-            LOG_WARN("Invalid bandwidth %d, setting to default", originalBandwidth);
+        if (validatedLora.spread_factor != clampSpreadFactor(validatedLora.spread_factor)) {
+            LOG_WARN("Invalid spread_factor %d, setting to %d", validatedLora.spread_factor, LORA_SF_DEFAULT);
+            validatedLora.spread_factor = LORA_SF_DEFAULT;
         }
 
         // If no lora radio parameters change, don't need to reboot
@@ -782,6 +798,17 @@ void AdminModule::handleSetConfig(const meshtastic_Config &c)
         }
 #endif
         config.lora = validatedLora;
+
+#if HAS_LORA_FEM
+        // Apply FEM LNA mode from config (only meaningful on hardware that supports it)
+        if (loraFEMInterface.isLnaCanControl()) {
+            loraFEMInterface.setLNAEnable(config.lora.fem_lna_mode != meshtastic_Config_LoRaConfig_FEM_LNA_Mode_DISABLED);
+        } else if (config.lora.fem_lna_mode != meshtastic_Config_LoRaConfig_FEM_LNA_Mode_NOT_PRESENT) {
+            // Hardware FEM does not support LNA control; normalize stored config to match actual capability
+            LOG_WARN("FEM LNA mode configured but current FEM does not support LNA control; normalizing to NOT_PRESENT");
+            config.lora.fem_lna_mode = meshtastic_Config_LoRaConfig_FEM_LNA_Mode_NOT_PRESENT;
+        }
+#endif
         // If we're setting region for the first time, init the region and regenerate the keys
         if (isRegionUnset && config.lora.region > meshtastic_Config_LoRaConfig_RegionCode_UNSET) {
 #if !(MESHTASTIC_EXCLUDE_PKI_KEYGEN || MESHTASTIC_EXCLUDE_PKI)
@@ -881,10 +908,11 @@ void AdminModule::handleSetConfig(const meshtastic_Config &c)
 
 bool AdminModule::handleSetModuleConfig(const meshtastic_ModuleConfig &c)
 {
+    bool shouldReboot = true;
     // If we are in an open transaction or configuring MQTT or Serial (which have validation), defer disabling Bluetooth
     // Otherwise, disable Bluetooth to prevent the phone from interfering with the config
-    if (!hasOpenEditTransaction &&
-        !IS_ONE_OF(c.which_payload_variant, meshtastic_ModuleConfig_mqtt_tag, meshtastic_ModuleConfig_serial_tag)) {
+    if (!hasOpenEditTransaction && !IS_ONE_OF(c.which_payload_variant, meshtastic_ModuleConfig_mqtt_tag,
+                                              meshtastic_ModuleConfig_serial_tag, meshtastic_ModuleConfig_statusmessage_tag)) {
         disableBluetooth();
     }
 
@@ -976,8 +1004,14 @@ bool AdminModule::handleSetModuleConfig(const meshtastic_ModuleConfig &c)
         moduleConfig.has_paxcounter = true;
         moduleConfig.paxcounter = c.payload_variant.paxcounter;
         break;
+    case meshtastic_ModuleConfig_statusmessage_tag:
+        LOG_INFO("Set module config: StatusMessage");
+        moduleConfig.has_statusmessage = true;
+        moduleConfig.statusmessage = c.payload_variant.statusmessage;
+        shouldReboot = false;
+        break;
     }
-    saveChanges(SEGMENT_MODULECONFIG);
+    saveChanges(SEGMENT_MODULECONFIG, shouldReboot);
     return true;
 }
 
@@ -1155,6 +1189,11 @@ void AdminModule::handleGetModuleConfig(const meshtastic_MeshPacket &req, const 
             LOG_INFO("Get module config: Paxcounter");
             res.get_module_config_response.which_payload_variant = meshtastic_ModuleConfig_paxcounter_tag;
             res.get_module_config_response.payload_variant.paxcounter = moduleConfig.paxcounter;
+            break;
+        case meshtastic_AdminMessage_ModuleConfigType_STATUSMESSAGE_CONFIG:
+            LOG_INFO("Get module config: StatusMessage");
+            res.get_module_config_response.which_payload_variant = meshtastic_ModuleConfig_statusmessage_tag;
+            res.get_module_config_response.payload_variant.statusmessage = moduleConfig.statusmessage;
             break;
         }
 
@@ -1472,13 +1511,41 @@ void AdminModule::handleSendInputEvent(const meshtastic_AdminMessage_InputEvent 
 #endif
 }
 
-void AdminModule::sendWarning(const char *message)
+void AdminModule::sendWarning(const char *format, ...)
 {
     meshtastic_ClientNotification *cn = clientNotificationPool.allocZeroed();
+    if (!cn)
+        return;
+
     cn->level = meshtastic_LogRecord_Level_WARNING;
     cn->time = getValidTime(RTCQualityFromNet);
-    strncpy(cn->message, message, sizeof(cn->message));
+
+    va_list args;
+    va_start(args, format);
+    // Format the arguments directly into the notification object
+    vsnprintf(cn->message, sizeof(cn->message), format, args);
+    va_end(args);
+
     service->sendClientNotification(cn);
+}
+
+void AdminModule::sendWarningAndLog(const char *format, ...)
+{
+    // We need a temporary buffer to hold the formatted text so we can log it
+    // Using 250 bytes as a safe upper limit for typical text notifications
+    char buf[250];
+
+    va_list args;
+    va_start(args, format);
+    vsnprintf(buf, sizeof(buf), format, args);
+    va_end(args);
+
+    LOG_WARN(buf);
+    // 2. Call sendWarning
+    // SECURITY NOTE: We pass "%s", buf instead of just 'buf'.
+    // If 'buf' contained a % symbol (e.g. "Battery 50%"), passing it directly
+    // would crash sendWarning. "%s" treats it purely as text.
+    sendWarning("%s", buf);
 }
 
 void disableBluetooth()
